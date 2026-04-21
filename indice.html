@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CWIA — Colorado Wildfire Command Center</title>
+
+<!-- Leaflet removido — mapa servido por Experience Builder -->
+
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  #header {
+    position: fixed;
+    top:0; left:0; right:0;
+    height: 56px;
+    background: rgba(10,10,15,0.95);
+    border-bottom: 1px solid #ff4400;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 1000;
+    transition: border-color 0.5s;
+  }
+  #header.alerta-verde  { border-bottom-color: #00ff88; }
+  #header.alerta-amarilla { border-bottom-color: #ffcc00; }
+  #header.alerta-roja   { border-bottom-color: #ff2200; }
+
+  .header-left { display:flex; align-items:center; gap:16px; }
+  .cwia-logo {
+    width:36px; height:36px;
+    background: linear-gradient(135deg,#ff4400,#ff8800);
+    border-radius:6px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; font-weight:900; color:white;
+  }
+  .header-title { display:flex; flex-direction:column; }
+  .header-title h1 { font-size:14px; font-weight:700; color:#ff6600; letter-spacing:2px; text-transform:uppercase; }
+  .header-title p  { font-size:10px; color:#888; letter-spacing:1px; }
+
+  .header-center { display:flex; align-items:center; gap:24px; }
+
+  .alerta-badge {
+    display:flex; align-items:center; gap:8px;
+    padding:6px 16px; border-radius:20px;
+    border:1px solid #ff4400;
+    font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    transition: all 0.5s;
+  }
+  .alerta-dot {
+    width:8px; height:8px; border-radius:50%;
+    background:#ff4400;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%,100%{ opacity:1; transform:scale(1); }
+    50%    { opacity:0.5; transform:scale(1.3); }
+  }
+
+  .header-stats { display:flex; gap:20px; }
+  .hstat { text-align:center; }
+  .hstat-val { font-size:18px; font-weight:700; color:#ff6600; line-height:1; }
+  .hstat-lbl { font-size:9px; color:#666; letter-spacing:1px; text-transform:uppercase; }
+
+  .header-right { display:flex; gap:8px; }
+  .btn-nav {
+    padding:6px 12px; background:transparent;
+    border:1px solid #333; border-radius:4px;
+    color:#aaa; font-size:11px; cursor:pointer;
+    text-decoration:none; transition:all 0.2s; letter-spacing:0.5px;
+  }
+  .btn-nav:hover { border-color:#ff6600; color:#ff6600; background:rgba(255,102,0,0.1); }
+
+  /* MAPA FRAME */
+  #mapa-frame {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 340px;
+    bottom: 30px;
+    width: calc(100% - 340px);
+    height: calc(100vh - 86px);
+    border: none;
+    z-index: 1;
+  }
+  #mapa { display:none; }
+
+  /* TICKER */
+  #ticker {
+    position:fixed; bottom:0; left:0; right:340px; height:30px;
+    background:rgba(10,10,15,0.95); border-top:1px solid #1a1a2e;
+    display:flex; align-items:center; overflow:hidden; z-index:100;
+  }
+  .ticker-label {
+    padding:0 12px; font-size:10px; font-weight:700; color:#ff6600;
+    letter-spacing:1px; white-space:nowrap; border-right:1px solid #1a1a2e;
+    height:100%; display:flex; align-items:center;
+  }
+  .ticker-content { flex:1; overflow:hidden; height:100%; display:flex; align-items:center; }
+  .ticker-text {
+    display:flex; gap:48px; font-size:11px; color:#666;
+    white-space:nowrap; animation:ticker 30s linear infinite;
+  }
+  .ticker-text span { color:#aaa; }
+  @keyframes ticker { 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
+
+  /* PANEL */
+  #panel {
+    position:fixed; top:56px; right:0; width:340px; bottom:0;
+    background:rgba(10,10,15,0.97); border-left:1px solid #1a1a2e;
+    overflow-y:auto; z-index:100;
+  }
+  #panel::-webkit-scrollbar { width:4px; }
+  #panel::-webkit-scrollbar-thumb { background:#1a1a2e; border-radius:2px; }
+
+  .panel-section { border-bottom:1px solid #1a1a2e; padding:16px; }
+  .panel-title {
+    font-size:10px; font-weight:700; color:#ff6600;
+    letter-spacing:2px; text-transform:uppercase;
+    margin-bottom:12px; display:flex; align-items:center; gap:8px;
+  }
+  .panel-title::before {
+    content:''; display:block; width:3px; height:12px;
+    background:#ff6600; border-radius:2px;
+  }
+
+  /* SEMAFORO */
+  .semaforo { display:flex; gap:8px; margin-bottom:12px; }
+  .semaforo-item {
+    flex:1; padding:10px 8px; border-radius:6px;
+    text-align:center; border:1px solid transparent;
+    cursor:pointer; transition:all 0.3s;
+  }
+  .semaforo-item.activo { border-color:currentColor; box-shadow:0 0 12px currentColor; }
+  .sem-verde   { color:#00ff88; background:rgba(0,255,136,0.05); }
+  .sem-amarillo{ color:#ffcc00; background:rgba(255,204,0,0.05); }
+  .sem-rojo    { color:#ff2200; background:rgba(255,34,0,0.05); }
+  .sem-icon { font-size:20px; margin-bottom:4px; }
+  .sem-lbl  { font-size:9px; letter-spacing:1px; text-transform:uppercase; font-weight:700; }
+  .sem-sub  { font-size:9px; color:#666; margin-top:2px; }
+
+  /* STATS */
+  .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .stat-card { background:#0f0f1a; border:1px solid #1a1a2e; border-radius:6px; padding:10px; }
+  .stat-val  { font-size:22px; font-weight:700; color:#ff6600; line-height:1; }
+  .stat-lbl  { font-size:9px; color:#666; letter-spacing:1px; text-transform:uppercase; margin-top:4px; }
+
+  .riesgo-bar-wrap { margin:8px 0; }
+  .riesgo-bar-lbl  { display:flex; justify-content:space-between; font-size:10px; color:#666; margin-bottom:4px; }
+  .riesgo-bar      { height:6px; background:#1a1a2e; border-radius:3px; overflow:hidden; }
+  .riesgo-bar-fill { height:100%; border-radius:3px; }
+
+  /* FICHA */
+  .ficha-nombre { font-size:16px; font-weight:700; color:#ff8800; margin-bottom:8px; }
+  .ficha-row    { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #111; font-size:12px; }
+  .ficha-row:last-child { border-bottom:none; }
+  .ficha-key { color:#666; }
+  .ficha-val { color:#e0e0e0; font-weight:600; }
+  .ficha-val.alto  { color:#ff4400; }
+  .ficha-val.medio { color:#ffcc00; }
+  .ficha-val.bajo  { color:#00ff88; }
+
+  /* TOGGLES */
+  .capa-toggle {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid #111; font-size:12px;
+  }
+  .capa-toggle:last-child { border-bottom:none; }
+  .capa-info { display:flex; align-items:center; gap:8px; }
+  .capa-dot  { width:10px; height:10px; border-radius:50%; }
+  .toggle-switch { position:relative; width:36px; height:20px; }
+  .toggle-switch input { display:none; }
+  .toggle-slider {
+    position:absolute; inset:0; background:#333;
+    border-radius:10px; cursor:pointer; transition:0.3s;
+  }
+  .toggle-slider:before {
+    content:''; position:absolute; width:14px; height:14px;
+    border-radius:50%; background:white; top:3px; left:3px; transition:0.3s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background:#ff6600; }
+  .toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px); }
+
+  /* APPS */
+  .apps-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .app-link {
+    display:block; padding:10px; background:#0f0f1a;
+    border:1px solid #1a1a2e; border-radius:6px;
+    text-decoration:none; color:#aaa; font-size:11px;
+    text-align:center; transition:all 0.2s;
+  }
+  .app-link:hover { border-color:#ff6600; color:#ff6600; background:rgba(255,102,0,0.05); }
+  .app-link-icon { font-size:20px; margin-bottom:4px; display:block; }
+  .app-link-name { font-weight:600; display:block; }
+  .app-link-sub  { font-size:9px; color:#555; }
+
+  .click-hint { font-size:11px; color:#444; text-align:center; padding:8px; font-style:italic; }
+  .timestamp  { font-size:10px; color:#444; text-align:right; margin-top:8px; }
+
+  /* Popup Leaflet oscuro */
+  .cwia-popup .leaflet-popup-content-wrapper {
+    background: #0f0f1a;
+    border: 1px solid #ff4400;
+    border-radius: 6px;
+    color: #e0e0e0;
+    box-shadow: 0 4px 20px rgba(255,68,0,0.2);
+  }
+  .cwia-popup .leaflet-popup-tip { background: #0f0f1a; }
+  .cwia-popup .leaflet-popup-close-button { color: #ff6600 !important; }
+  .leaflet-control-zoom a {
+    background: #0f0f1a !important;
+    color: #ff6600 !important;
+    border-color: #333 !important;
+  }
+  .leaflet-control-zoom a:hover { background: #1a1a2e !important; }
+
+  /* LOADING */
+  #loading {
+    position:fixed; inset:0; background:#0a0a0f;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    z-index:9999; transition:opacity 0.5s;
+  }
+  .loading-logo { font-size:48px; font-weight:900; color:#ff6600; letter-spacing:8px; margin-bottom:8px; }
+  .loading-sub  { font-size:12px; color:#555; letter-spacing:3px; margin-bottom:32px; }
+  .loading-bar  { width:200px; height:2px; background:#1a1a2e; border-radius:1px; overflow:hidden; }
+  .loading-bar-fill { height:100%; background:#ff6600; animation:loadanim 2s ease-in-out forwards; }
+  @keyframes loadanim { 0%{ width:0; } 100%{ width:100%; } }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="loading-logo">CWIA</div>
+  <div class="loading-sub">COLORADO WILDFIRE COMMAND CENTER</div>
+  <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+</div>
+
+<!-- HEADER -->
+<div id="header" class="alerta-roja">
+  <div class="header-left">
+    <div class="cwia-logo">🔥</div>
+    <div class="header-title">
+      <h1>Colorado Wildfire Intelligence Agency</h1>
+      <p>COMMAND CENTER — SISTEMA DE MANDO Y CONTROL EN TIEMPO REAL</p>
+    </div>
+  </div>
+  <div class="header-center">
+    <div class="alerta-badge" id="alerta-badge">
+      <div class="alerta-dot" id="alerta-dot"></div>
+      <span id="alerta-texto">ALERTA ACTIVA</span>
+    </div>
+    <div class="header-stats">
+      <div class="hstat">
+        <div class="hstat-val" id="h-focos">--</div>
+        <div class="hstat-lbl">Focos Activos</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val">64</div>
+        <div class="hstat-lbl">Condados</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val">48h</div>
+        <div class="hstat-lbl">Ventana NASA</div>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <a class="btn-nav" href="https://mastergis.maps.arcgis.com/apps/dashboards/d9a57005f5c24740a031d7cd4c591a43" target="_blank">Dashboard</a>
+    <a class="btn-nav" href="https://experience.arcgis.com/experience/821d45609b0b4e73b8b5cf859f44dfd8" target="_blank">Analytics</a>
+    <a class="btn-nav" href="https://survey123.arcgis.com/share/f54fa2fc4b204e9e9176b5a7bfd9f29e?portalUrl=https://mastergis.maps.arcgis.com" target="_blank">Survey</a>
+    <a class="btn-nav" href="https://storymaps.arcgis.com/stories/d6d5507d84b04958bca9567b02d484ba" target="_blank">StoryMap</a>
+  </div>
+</div>
+
+<!-- MAPA — Experience Builder embebido -->
+<iframe 
+  id="mapa-frame"
+  src="https://experience.arcgis.com/experience/821d45609b0b4e73b8b5cf859f44dfd8"
+  style="position:fixed;top:56px;left:0;right:340px;bottom:30px;width:calc(100% - 340px);height:calc(100vh - 86px);border:none;z-index:1;"
+  allowfullscreen
+></iframe>
+<div id="mapa" style="display:none;"></div>
+
+<!-- TICKER -->
+<div id="ticker">
+  <div class="ticker-label">CWIA LIVE</div>
+  <div class="ticker-content">
+    <div class="ticker-text" id="ticker-text">
+      <span>Sistema CWIA operativo — </span>
+      <span>Datos NASA FIRMS actualizados cada 24h — </span>
+      <span>3 sensores activos: VIIRS S-NPP · VIIRS NOAA-20 · MODIS Aqua+Terra — </span>
+      <span>Colorado: 104,094 km² bajo monitoreo — </span>
+      <span>64 condados analizados — </span>
+      <span>Índice de riesgo: Weighted Overlay multicriterio — </span>
+      <span>Sistema CWIA operativo — </span>
+      <span>Datos NASA FIRMS actualizados cada 24h — </span>
+      <span>3 sensores activos: VIIRS S-NPP · VIIRS NOAA-20 · MODIS Aqua+Terra — </span>
+      <span>Colorado: 104,094 km² bajo monitoreo — </span>
+      <span>64 condados analizados — </span>
+      <span>Índice de riesgo: Weighted Overlay multicriterio — </span>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL -->
+<div id="panel">
+
+  <div class="panel-section">
+    <div class="panel-title">Nivel de Alerta</div>
+    <div class="semaforo">
+      <div class="semaforo-item sem-verde" id="sem-verde">
+        <div class="sem-icon">🟢</div>
+        <div class="sem-lbl">Normal</div>
+        <div class="sem-sub">&lt; 5 focos</div>
+      </div>
+      <div class="semaforo-item sem-amarillo" id="sem-amarillo">
+        <div class="sem-icon">🟡</div>
+        <div class="sem-lbl">Vigilancia</div>
+        <div class="sem-sub">5-15 focos</div>
+      </div>
+      <div class="semaforo-item sem-rojo activo" id="sem-rojo">
+        <div class="sem-icon">🔴</div>
+        <div class="sem-lbl">Alerta</div>
+        <div class="sem-sub">&gt; 15 focos</div>
+      </div>
+    </div>
+    <div class="timestamp" id="update-time">Actualizando...</div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-title">Inteligencia General</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-val" id="s-focos">--</div>
+        <div class="stat-lbl">Focos Activos</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">104k</div>
+        <div class="stat-lbl">km² Monitoreados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:#ff2200">Alto</div>
+        <div class="stat-lbl">Riesgo Zona Oeste</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:#00ff88">Bajo</div>
+        <div class="stat-lbl">Riesgo Zona Este</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <div class="riesgo-bar-wrap">
+        <div class="riesgo-bar-lbl"><span>Muy Alto</span><span style="color:#ff2200">35%</span></div>
+        <div class="riesgo-bar"><div class="riesgo-bar-fill" style="width:35%;background:#ff2200;"></div></div>
+      </div>
+      <div class="riesgo-bar-wrap">
+        <div class="riesgo-bar-lbl"><span>Alto</span><span style="color:#ff6600">25%</span></div>
+        <div class="riesgo-bar"><div class="riesgo-bar-fill" style="width:25%;background:#ff6600;"></div></div>
+      </div>
+      <div class="riesgo-bar-wrap">
+        <div class="riesgo-bar-lbl"><span>Moderado</span><span style="color:#ffcc00">20%</span></div>
+        <div class="riesgo-bar"><div class="riesgo-bar-fill" style="width:20%;background:#ffcc00;"></div></div>
+      </div>
+      <div class="riesgo-bar-wrap">
+        <div class="riesgo-bar-lbl"><span>Bajo / Muy Bajo</span><span style="color:#00ff88">20%</span></div>
+        <div class="riesgo-bar"><div class="riesgo-bar-fill" style="width:20%;background:#00ff88;"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-title">Inteligencia por Condado</div>
+    <div id="ficha-condado" style="display:none;">
+      <div class="ficha-nombre" id="ficha-nombre">--</div>
+      <div class="ficha-row">
+        <span class="ficha-key">Nivel de Riesgo</span>
+        <span class="ficha-val alto" id="ficha-riesgo">--</span>
+      </div>
+      <div class="ficha-row">
+        <span class="ficha-key">Focos en Condado</span>
+        <span class="ficha-val" id="ficha-focos">--</span>
+      </div>
+      <div class="ficha-row">
+        <span class="ficha-key">Sensor Principal</span>
+        <span class="ficha-val" id="ficha-sensor">--</span>
+      </div>
+      <div class="ficha-row">
+        <span class="ficha-key">Último Registro</span>
+        <span class="ficha-val" id="ficha-fecha">--</span>
+      </div>
+    </div>
+    <div class="click-hint" id="click-hint">
+      Haga clic sobre un condado o un foco en el mapa para ver la ficha de inteligencia
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-title">Control de Capas</div>
+    <div class="capa-toggle">
+      <div class="capa-info">
+        <div class="capa-dot" style="background:linear-gradient(135deg,#ff2200,#ffcc00);"></div>
+        <span>Focos Calor NASA</span>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" checked id="toggle-focos">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="capa-toggle">
+      <div class="capa-info">
+        <div class="capa-dot" style="background:transparent;border:1.5px solid rgba(255,102,0,0.6);"></div>
+        <span>Condados Colorado</span>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" checked id="toggle-condados">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-title">Centro de Aplicaciones CWIA</div>
+    <div class="apps-grid">
+      <a class="app-link" href="https://mastergis.maps.arcgis.com/apps/dashboards/d9a57005f5c24740a031d7cd4c591a43" target="_blank">
+        <span class="app-link-icon">📊</span>
+        <span class="app-link-name">Operations Center</span>
+        <span class="app-link-sub">Dashboard en vivo</span>
+      </a>
+      <a class="app-link" href="https://experience.arcgis.com/experience/821d45609b0b4e73b8b5cf859f44dfd8" target="_blank">
+        <span class="app-link-icon">🔬</span>
+        <span class="app-link-name">CWIA Analytics</span>
+        <span class="app-link-sub">Análisis avanzado</span>
+      </a>
+      <a class="app-link" href="https://survey123.arcgis.com/share/f54fa2fc4b204e9e9176b5a7bfd9f29e?portalUrl=https://mastergis.maps.arcgis.com" target="_blank">
+        <span class="app-link-icon">📋</span>
+        <span class="app-link-name">Damage Survey</span>
+        <span class="app-link-sub">Inspección campo</span>
+      </a>
+      <a class="app-link" href="https://storymaps.arcgis.com/stories/d6d5507d84b04958bca9567b02d484ba" target="_blank">
+        <span class="app-link-icon">📖</span>
+        <span class="app-link-name">StoryMap CWIA</span>
+        <span class="app-link-sub">Narrativa pública</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div style="font-size:10px;color:#333;line-height:1.8;">
+      <div style="color:#555;margin-bottom:4px;font-weight:600;">FUENTES DE DATOS</div>
+      NASA FIRMS — VIIRS S-NPP · VIIRS NOAA-20 · MODIS<br>
+      LANDFIRE 2024 — USGS/USFS<br>
+      US Census Bureau — TIGER/Line<br>
+      FEMA SVI 2022<br>
+      <div style="margin-top:8px;color:#333;">
+        Arturo Fernández Girón · Master GIS Online · Esri España 2025-2026
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// CWIA Command Center — Panel + Contadores
+// El mapa visual viene del Experience Builder (iframe)
+// ════════════════════════════════════════════════
+
+// ── Focos NASA FIRMS — REST directo ──────────────
+// URL directa de la Feature Layer FIRMS
+const FIRMS_BASE = "https://services6.arcgis.com/vQa0SVm7Y0deDYFA/arcgis/rest/services/CWIA_FocosCalor_FIRMS/FeatureServer/0/query?where=1%3D1&outFields=sensor%2Cacq_date%2Cacq_time%2Cnivel_confianza%2Cfrp%2Clatitude%2Clongitude&returnGeometry=false&f=json&returnCountOnly=true";
+const FIRMS_URL  = "https://services6.arcgis.com/vQa0SVm7Y0deDYFA/arcgis/rest/services/CWIA_FocosCalor_FIRMS/FeatureServer/0/query?where=1%3D1&outFields=sensor%2Cacq_date%2Cacq_time%2Cnivel_confianza%2Cfrp%2Clatitude%2Clongitude&returnGeometry=true&f=geojson";
+
+function colorPorConfianza(conf) {
+  if (conf === "Alta")    return { color: "#ff2200", radius: 7 };
+  if (conf === "Nominal") return { color: "#ff7800", radius: 5 };
+  return                         { color: "#ffcc00", radius: 4 };
+}
+
+function renderFocos(features) {
+  // Solo actualizar contadores — el mapa visual está en el iframe
+  actualizarContadores(features.length);
+}
+
+function cargarFocos() {
+  // Estrategia 1: fetch directo con count only (más ligero)
+  fetch(FIRMS_BASE, { mode: "cors" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(data => {
+      const count = data.count || 0;
+      actualizarContadores(count);
+    })
+    .catch(() => {
+      // Estrategia 2: fetch con no-cors — solo para saber si hay respuesta
+      // Fallback: leer el count del iframe via postMessage si está disponible
+      intentarLeerDesdeIframe();
+    });
+}
+
+function intentarLeerDesdeIframe() {
+  // Intentar obtener datos del iframe de Experience Builder
+  // Si no hay respuesta en 3s, mantener el último valor conocido
+  const iframe = document.getElementById("mapa-frame");
+  if (!iframe) return;
+
+  // Polling alternativo: query REST sin geometría (más permisivo con CORS)
+  const countUrl = "https://services6.arcgis.com/vQa0SVm7Y0deDYFA/arcgis/rest/services/CWIA_FocosCalor_FIRMS/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json";
+
+  fetch(countUrl)
+    .then(r => r.json())
+    .then(data => {
+      const count = data.count || 0;
+      actualizarContadores(count);
+    })
+    .catch(() => {
+      // Mantener "--" pero con timestamp actualizado
+      document.getElementById("update-time").textContent =
+        "Actualizado: " + new Date().toLocaleTimeString("es-ES");
+    });
+}
+
+cargarFocos();
+setInterval(cargarFocos, 30000);
+
+// ── Loading — desaparece siempre ─────────────────
+setTimeout(function() {
+  var el = document.getElementById("loading");
+  el.style.opacity = "0";
+  setTimeout(function(){ el.style.display = "none"; }, 500);
+}, 2000);
+
+// ── Contadores y semáforo ────────────────────────
+function actualizarContadores(count) {
+  document.getElementById("s-focos").textContent = count;
+  document.getElementById("h-focos").textContent = count;
+  document.getElementById("update-time").textContent =
+    "Actualizado: " + new Date().toLocaleTimeString("es-ES");
+
+  actualizarSemaforo(count);
+
+  const base = `Sistema CWIA operativo · ${count} focos activos en Colorado · Datos NASA FIRMS · 3 sensores: VIIRS S-NPP · VIIRS NOAA-20 · MODIS · 104,094 km² monitoreados · 64 condados · `;
+  document.getElementById("ticker-text").innerHTML =
+    `<span>${base}</span><span>${base}</span>`;
+}
+
+function actualizarSemaforo(count) {
+  const header = document.getElementById("header");
+  const badge  = document.getElementById("alerta-badge");
+  const dot    = document.getElementById("alerta-dot");
+  const texto  = document.getElementById("alerta-texto");
+
+  ["sem-verde","sem-amarillo","sem-rojo"].forEach(id =>
+    document.getElementById(id).classList.remove("activo"));
+
+  if (count < 5) {
+    document.getElementById("sem-verde").classList.add("activo");
+    header.className = "alerta-verde";
+    badge.style.borderColor = "#00ff88";
+    dot.style.background = "#00ff88";
+    texto.textContent = "CONDICIONES NORMALES";
+  } else if (count <= 15) {
+    document.getElementById("sem-amarillo").classList.add("activo");
+    header.className = "alerta-amarilla";
+    badge.style.borderColor = "#ffcc00";
+    dot.style.background = "#ffcc00";
+    texto.textContent = "VIGILANCIA ACTIVA";
+  } else {
+    document.getElementById("sem-rojo").classList.add("activo");
+    header.className = "alerta-roja";
+    badge.style.borderColor = "#ff2200";
+    dot.style.background = "#ff2200";
+    texto.textContent = "ALERTA MÁXIMA";
+  }
+}
+
+// ── Fichas del panel ─────────────────────────────
+function mostrarFicha() {
+  document.getElementById("ficha-condado").style.display = "block";
+  document.getElementById("click-hint").style.display    = "none";
+}
+
+function mostrarFichaFoco(props) {
+  mostrarFicha();
+  document.getElementById("ficha-nombre").textContent = "🔥 Foco Detectado";
+  document.getElementById("ficha-riesgo").textContent = props.nivel_confianza || "N/A";
+  document.getElementById("ficha-riesgo").className   = "ficha-val " +
+    (props.nivel_confianza === "Alta" ? "alto" : props.nivel_confianza === "Baja" ? "bajo" : "medio");
+  document.getElementById("ficha-focos").textContent  = "1 foco en esta ubicación";
+  document.getElementById("ficha-sensor").textContent = props.sensor || "NASA FIRMS";
+  document.getElementById("ficha-fecha").textContent  = (props.acq_date || "") + " " + (props.acq_time || "");
+}
+
+function mostrarFichaCondado(nombre, bounds) {
+  // Ficha deshabilitada en modo iframe — interacción desde Experience Builder
+}
+
+// ── Toggles — abren el Experience Builder en nueva pestaña ──
+document.getElementById("toggle-focos").addEventListener("change", function(e) {
+  // Los toggles de capas se gestionan desde el Experience Builder
+  console.log("toggle focos:", e.target.checked);
+});
+document.getElementById("toggle-condados").addEventListener("change", function(e) {
+  console.log("toggle condados:", e.target.checked);
+});
+</script>
+</body>
+</html>
